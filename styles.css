@@ -11,6 +11,13 @@
   --bad: #c9503f;
   --shadow: 0 2px 0 rgba(43, 33, 24, .12), 0 8px 24px rgba(43, 33, 24, .08);
   --radius: 14px;
+  /* 多邻国风格色板（duolingo-ui 原型落地）：正确/继续=绿，提醒=黄，错误=红，信息=蓝 */
+  --mx-green: #58cc02; --mx-green-dark: #58a700; --mx-green-bg: #d7ffb8; --mx-green-text: #4a8a05;
+  --mx-blue: #1cb0f6; --mx-blue-dark: #1899d6; --mx-blue-bg: #ddf4ff;
+  --mx-red: #ff4b4b; --mx-red-dark: #ea2b2b; --mx-red-bg: #ffdfe0;
+  --mx-orange: #ff9600; --mx-orange-dark: #e08600;
+  --mx-yellow: #ffc800; --mx-yellow-dark: #e6a800;
+  --mx-gray: #e5e5e5; --mx-gray-dark: #afafaf;
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -48,17 +55,23 @@ h1 { font-size: 1.5rem; margin: 0 0 6px; }
 h2 { font-size: 1.2rem; margin: 24px 0 10px; }
 .sub { color: var(--ink-soft); margin: 0 0 18px; font-size: .95rem; }
 
-/* ---------- 通用控件 ---------- */
+/* ---------- 通用控件（多邻国 3D 按钮：实心底边，按下下沉） ---------- */
 .btn {
-  border: 2px solid var(--ink);
-  background: var(--brand); color: #fff;
-  padding: 9px 18px; border-radius: 999px;
-  font-weight: 700; box-shadow: 0 2px 0 var(--ink);
-  transition: transform .08s;
+  border: none;
+  background: var(--mx-green); color: #fff;
+  padding: 11px 22px; border-radius: 14px;
+  font-weight: 800; box-shadow: 0 4px 0 var(--mx-green-dark);
+  transition: transform .06s, box-shadow .06s;
 }
-.btn:active { transform: translateY(2px); box-shadow: 0 0 0 var(--ink); }
-.btn.ghost { background: var(--paper-2); color: var(--ink); }
-.btn.small { padding: 5px 12px; font-size: .85rem; }
+.btn:active { transform: translateY(4px); box-shadow: 0 0 0 var(--mx-green-dark); }
+.btn.ghost {
+  background: #fff; color: var(--ink);
+  border: 2px solid var(--mx-gray); border-bottom-width: 4px; box-shadow: none;
+  padding: 9px 20px;
+}
+.btn.ghost:active { transform: translateY(2px); border-bottom-width: 2px; }
+.btn.small { padding: 5px 13px; font-size: .85rem; border-radius: 10px; box-shadow: 0 2px 0 var(--mx-green-dark); }
+.btn.ghost.small { box-shadow: none; padding: 4px 11px; }
 .btn:disabled { opacity: .45; cursor: not-allowed; }
 
 .card {
@@ -178,3 +191,14 @@ label { display: block; font-weight: 700; margin: 14px 0 4px; font-size: .92rem;
   .monster-box .face { font-size: 2.2rem; }
   .skill-pick { max-height: 40vh; }
 }
+
+/* ---------- 多邻国动效 ---------- */
+@keyframes mxPop { 0% { transform: scale(.55); } 60% { transform: scale(1.1); } 100% { transform: scale(1); } }
+@keyframes mxShake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
+@keyframes mxBounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
+@keyframes mxUp { 0% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-52px); } }
+@keyframes mxSheet { from { transform: translateY(100%); } to { transform: translateY(0); } }
+@keyframes mxConf { 0% { transform: translateY(-14vh) rotate(0); } 100% { transform: translateY(112vh) rotate(660deg); } }
+.mx-pop { animation: mxPop .2s ease-out; }
+.mx-shake { animation: mxShake .32s; }
+.mx-bounce { animation: mxBounce 1.5s ease-in-out infinite; }
