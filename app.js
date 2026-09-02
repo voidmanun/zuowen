@@ -206,17 +206,47 @@ function passRecite() {
   };
   saveDB();
   const m = mat(id);
-  $('reciteBox').innerHTML = `<div class="notice good">
-      <b>🎉 学会了新技能！</b><br>「${esc(m.text)}」<br>
-      <span class="muted">它现在进了你的技能库，挑战里就能用上了。</span>
-    </div>
-    <div class="row">
-      <button class="btn" id="nextOne">再背一条</button>
-      <button class="btn ghost" id="backHome">回大厅</button>
+  const slotNames = m.slotTypes.map(t => SLOT_TYPES[t].name).join('/');
+  $('reciteBox').innerHTML = `
+    <div class="mx-celebrate">
+      <div class="confetti" id="confetti"></div>
+      <div class="mx-big-emoji mx-pop">🎉</div>
+      <div class="mx-cheer mx-pop">太棒了！</div>
+      <p class="muted">词语拼接全部点对，素材已收进口袋</p>
+      <div class="reward-row">
+        <div class="reward-chip"><div class="rc-icon">🧩</div><div>技能 +1</div></div>
+        <div class="reward-chip"><div class="rc-icon">📖</div><div>技能库 ${owned().length} 条</div></div>
+      </div>
+      <div class="card" style="text-align:left">
+        <div class="muted" style="font-size:.82rem">新技能入库</div>
+        <div class="row" style="justify-content:space-between">
+          <b>${slotNames} · ${m.grain}</b>
+          <span class="tag" style="background:var(--mx-green-bg);color:var(--mx-green-text)">已入库</span>
+        </div>
+        <div style="margin-top:6px">${esc(m.text)}</div>
+      </div>
+      <div class="row" style="margin-top:14px">
+        <button class="btn" id="nextOne">再背一条</button>
+        <button class="btn ghost" id="backHome">回大厅</button>
+      </div>
     </div>`;
   $('reciteStage').textContent = '';
+  burstConfetti($('confetti'));
   $('nextOne').onclick = () => renderLearn(m.genre);
   $('backHome').onclick = renderHome;
+}
+
+/* 庆祝彩带：颜色用多邻国色板，纯 CSS 动画，动画结束后容器仍留着循环播放 */
+function burstConfetti(box) {
+  const colors = ['var(--mx-green)', 'var(--mx-blue)', 'var(--mx-yellow)', 'var(--mx-red)'];
+  for (let i = 0; i < 26; i++) {
+    const s = document.createElement('span');
+    const size = 8 + (i % 3) * 4;
+    s.style.cssText = `left:${(i * 137) % 100}%;width:${size}px;height:${size * (i % 2 ? 1 : 1.6)}px;` +
+      `background:${colors[i % 4]};border-radius:${i % 3 ? '50%' : '2px'};` +
+      `animation:mxConf ${2.3 + (i % 5) * .35}s linear ${(i % 9) * .12}s infinite;`;
+    box.appendChild(s);
+  }
 }
 
 /* ===== 背诵验收主体：词语级拼接 ===== */
@@ -249,30 +279,46 @@ function chunkSegments(chunks) {
 function reciteSeg() {
   const m = mat(recite.matId);
   const chunks = recite.segs[recite.seg];
+  const total = recite.segs.reduce((a, s) => a + s.length, 0);
+  const doneAll = recite.segs.slice(0, recite.seg).reduce((a, s) => a + s.length, 0);
   const multi = recite.segs.length > 1;
   $('reciteStage').textContent = multi
     ? `词块多，自动分成 ${recite.segs.length} 段：现在是第 ${recite.seg + 1} 段`
     : `共 ${chunks.length} 块，按顺序点回这条素材`;
   const shuffled = chunks.map((t, i) => ({ t, i })).sort(() => Math.random() - 0.5);
   $('reciteBox').innerHTML = `
-    <p class="muted">先读两遍，再按正确顺序点下面的词语块。点错会告诉你。</p>
+    <div class="mx-progress"><i id="progFill"></i></div>
     <div class="mat-text big" id="fullText">${esc(m.text)}</div>
-    <div class="row"><button class="btn ghost small" id="hideText">我记住了，把原文盖住</button></div>
-    <h2>按顺序点</h2>
+    <div class="row"><button class="btn ghost small" id="hideText">🙈 盖住原文，凭记忆拼</button></div>
+    <h2>按顺序点下面的词块，把原句拼回来</h2>
     <div class="drop-zone" id="zone"></div>
-    <div id="bank" style="margin-top:10px">
+    <div id="bank" class="frag-bank">
       ${shuffled.map(f => `<span class="frag" data-i="${f.i}">${esc(f.t)}</span>`).join('')}
     </div>`;
   let next = 0;
-  $('hideText').onclick = () => { $('fullText').style.filter = 'blur(6px)'; $('hideText').disabled = true; };
+  const setProg = () => {
+    $('progFill').style.width = Math.round((doneAll + next) / total * 100) + '%';
+  };
+  setProg();
+  $('hideText').onclick = () => {
+    const hide = !$('fullText').classList.contains('covered');
+    $('fullText').classList.toggle('covered', hide);
+    $('hideText').textContent = hide ? '👀 看一眼原文' : '🙈 盖住原文，凭记忆拼';
+  };
   $('bank').querySelectorAll('.frag').forEach(el => el.onclick = () => {
-    if (Number(el.dataset.i) !== next) { toast('这一块不是这个位置，再想想 🤔', 'bad'); return; }
+    if (Number(el.dataset.i) !== next) {
+      el.classList.add('miss');
+      setTimeout(() => el.classList.remove('miss'), 340);
+      toast('这一块不是这个位置，再想想 🤔', 'bad');
+      return;
+    }
     el.classList.add('used');
     const placed = document.createElement('span');
-    placed.className = 'frag';
+    placed.className = 'frag put mx-pop';
     placed.textContent = el.textContent;      // 用 DOM 构造，不把文本再当 HTML 解析一次
     $('zone').appendChild(placed);
     next++;
+    setProg();
     if (next < chunks.length) return;
     if (recite.seg + 1 < recite.segs.length) {
       toast(`第 ${recite.seg + 1} 段全对！接着背下一段`, 'good');

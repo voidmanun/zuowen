@@ -113,16 +113,33 @@ h2 { font-size: 1.2rem; margin: 24px 0 10px; }
 .bar { height: 8px; background: #eee3cd; border-radius: 999px; overflow: hidden; margin-top: 8px; }
 .bar > i { display: block; height: 100%; background: var(--brand); }
 
-/* ---------- 背诵 ---------- */
+/* ---------- 背诵（多邻国小课：进度条 + 盖原文 + 词块即时反馈） ---------- */
 .mat-text { font-size: 1.15rem; line-height: 2; margin: 8px 0 4px; }
 .mat-text.big { font-size: 1.3rem; }
+.mat-text.covered { filter: blur(6px); }
+.mx-progress { height: 14px; background: var(--mx-gray); border-radius: 999px; overflow: hidden; margin-bottom: 14px; }
+.mx-progress > i { display: block; height: 100%; width: 0; background: var(--mx-green); border-radius: 999px; transition: width .25s; }
 .frag {
-  display: inline-block; border: 2px dashed var(--line); border-radius: 10px;
-  padding: 6px 12px; margin: 5px; background: var(--paper-2); cursor: pointer;
+  display: inline-block; border: 2px solid var(--mx-gray); border-bottom-width: 4px; border-radius: 12px;
+  padding: 8px 14px; margin: 5px; background: #fff; cursor: pointer; font-weight: 600;
+  transition: transform .06s, border-bottom-width .06s;
 }
-.frag.used { opacity: .3; pointer-events: none; }
-.drop-zone { min-height: 60px; border: 2px solid var(--line); border-radius: 10px; padding: 8px; background: #fffef9; }
-.drop-zone .frag { border-style: solid; border-color: var(--brand); cursor: default; }
+.frag:active { transform: translateY(2px); border-bottom-width: 2px; }
+.frag.used { display: none; }
+.frag.miss { background: var(--mx-red-bg); color: var(--mx-red-dark); border-color: var(--mx-red); animation: mxShake .32s; }
+.frag-bank { margin-top: 10px; }
+.drop-zone { min-height: 64px; border: 2px solid var(--line); border-radius: 12px; padding: 10px; background: #fffef9; }
+.drop-zone .frag { border-color: var(--mx-green); background: var(--mx-green-bg); color: var(--mx-green-text); cursor: default; }
+
+/* ---------- 庆祝 ---------- */
+.mx-celebrate { position: relative; text-align: center; overflow: hidden; }
+.confetti { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.confetti span { position: absolute; top: -24px; display: block; }
+.mx-big-emoji { font-size: 3.6rem; }
+.mx-cheer { font-size: 1.6rem; font-weight: 900; margin: 4px 0 2px; }
+.reward-row { display: flex; gap: 10px; justify-content: center; margin: 16px 0; }
+.reward-chip { flex: 1; max-width: 160px; background: #fff; border: 2px solid var(--mx-green); border-radius: 12px; padding: 10px 6px; font-weight: 800; color: var(--mx-green-text); }
+.reward-chip .rc-icon { font-size: 1.5rem; }
 /* ---------- 战斗 ---------- */
 .monster-box { display: flex; align-items: center; gap: 14px; }
 .monster-box .face { font-size: 3rem; }
