@@ -5,3 +5,6 @@
 # 日志与临时文件
 *.log
 *.tmp
+
+# .canvas.tsx 原型只用于预览，不进仓库（见 .qoder/skills/prototype/SKILL.md）
+prototypes/
