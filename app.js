@@ -6,6 +6,7 @@
 
 const STORE_KEY = 'zwjm.v1';
 const REVIEW_DAYS = 14;
+const DAILY_GOAL = 3;   // 每天背 3 条算达成日目标，达成才计连胜
 
 let DB = null;          // { profiles: [], lastProfileId, settings }
 let ME = null;          // 当前档案
@@ -24,7 +25,9 @@ function newProfile(name, grade) {
     name, grade: Number(grade),
     createdAt: Date.now(),
     skills: {},      // matId -> { learnedAt, lastReciteAt, usedCount }
-    quests: {}       // questId -> { firstStars, cleared, tries }
+    quests: {},      // questId -> { firstStars, cleared, tries }
+    dailyGoal: { date: '', count: 0 },   // 当日已背条数，date 为本地时区 YYYY-M-D
+    streak: { last: '', days: 0 }        // 连胜：last 为最后一次达成日目标的日子
   };
 }
 
@@ -37,6 +40,48 @@ const quest = id => QUESTS.find(q => q.id === id);
 const genre = id => GENRES.find(g => g.id === id);
 const days = ms => Math.floor(ms / 86400000);
 const owned = () => Object.keys(ME.skills);
+
+/* 日目标与连胜：日期用本地时区的 YYYY-M-D，不用 toISOString（那是 UTC，晚上八点后会跳到明天） */
+function todayStr(d) {
+  const x = d || new Date();
+  return `${x.getFullYear()}-${x.getMonth() + 1}-${x.getDate()}`;
+}
+/* 旧档案没有这两个字段，进大厅前补上，老数据不带迁移负担 */
+function ensureMeta() {
+  if (!ME.dailyGoal) ME.dailyGoal = { date: '', count: 0 };
+  if (!ME.streak) ME.streak = { last: '', days: 0 };
+}
+/* 背会一条就计数；达成日目标当天连胜顺延（昨天也达成 → +1，断了从 1 重新数） */
+function bumpDaily() {
+  const t = todayStr();
+  if (ME.dailyGoal.date !== t) ME.dailyGoal = { date: t, count: 0 };
+  ME.dailyGoal.count++;
+  if (ME.dailyGoal.count < DAILY_GOAL || ME.streak.last === t) return;
+  const y = new Date(); y.setDate(y.getDate() - 1);
+  ME.streak.days = ME.streak.last === todayStr(y) ? ME.streak.days + 1 : 1;
+  ME.streak.last = t;
+}
+/* 日目标进度环 */
+function ringSvg(p, label) {
+  const C = 2 * Math.PI * 52;
+  return `<svg width="104" height="104" viewBox="0 0 120 120">
+    <circle cx="60" cy="60" r="52" stroke="var(--mx-gray)" stroke-width="13" fill="none"/>
+    <circle cx="60" cy="60" r="52" stroke="var(--mx-yellow)" stroke-width="13" fill="none" stroke-linecap="round"
+      stroke-dasharray="${(C * p).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 60 60)"/>
+    <text x="60" y="68" text-anchor="middle" font-size="26" font-weight="800" fill="var(--ink)">${label}</text>
+  </svg>`;
+}
+/* 蛇形小径列位：1-5 列之间来回摆，形成关卡小路 */
+function zigzagCols(n) {
+  const out = [];
+  let c = 3, dir = 1;
+  for (let i = 0; i < n; i++) {
+    out.push(c);
+    if (c + dir < 1 || c + dir > 5) dir = -dir;
+    c += dir;
+  }
+  return out;
+}
 
 function allowedStars(grade) {
   if (grade === 4) return [1, 2];
@@ -81,6 +126,7 @@ function enter(id) {
   ME = DB.profiles.find(p => p.id === id);
   if (!ME) return renderProfiles();
   DB.lastProfileId = id; saveDB();
+  ensureMeta();
   $('whoami').textContent = `· ${ME.name}（${ME.grade}年级）`;
   renderHome();
 }
@@ -103,6 +149,26 @@ function renderHome() {
 
   renderReview();
 
+  /* 日目标 + 连胜 */
+  const cnt = ME.dailyGoal.count;
+  const goalDone = cnt >= DAILY_GOAL;
+  $('goalRing').innerHTML = ringSvg(Math.min(1, cnt / DAILY_GOAL), `${cnt}/${DAILY_GOAL}`);
+  $('goalText').innerHTML = goalDone
+    ? '今日目标已达成 🎉<br>多背的每一条都是赚的'
+    : `再背 <b>${DAILY_GOAL - cnt}</b> 条素材就达成<br>每天 ${DAILY_GOAL} 条，作文口袋越攒越满`;
+  $('streakDays').textContent = ME.streak.days;
+  $('streakHint').textContent = goalDone ? '今天已达成，明天继续别断哦' : '达成今日目标，连胜 +1';
+  renderStreakWeek();
+
+  /* 继续学习：跳到掌握率最低的题材 */
+  const lowest = GENRES.map(g => {
+    const pool = CORPUS.filter(m => m.genre === g.id);
+    const got = pool.filter(m => ME.skills[m.id]).length;
+    return { g, got, total: pool.length, r: got / pool.length };
+  }).sort((a, b) => a.r - b.r)[0];
+  $('continueSub').textContent = `去${lowest.g.name}练功房 · 已掌握 ${lowest.got}/${lowest.total}`;
+  $('continueBtn').onclick = () => renderLearn(lowest.g.id);
+
   $('genreListLearn').innerHTML = GENRES.map(g => {
     const pool = CORPUS.filter(m => m.genre === g.id);
     const got = pool.filter(m => ME.skills[m.id]).length;
@@ -117,21 +183,34 @@ function renderHome() {
   $('genreListLearn').querySelectorAll('[data-genre]').forEach(el =>
     el.onclick = () => renderLearn(el.dataset.genre));
 
-  $('questList').innerHTML = QUESTS.map(q => {
-    const rec = ME.quests[q.id];
-    const g = genre(q.genre);
-    const done = rec && rec.cleared;
-    return `<div class="card genre-card" data-quest="${q.id}">
-      <div class="icon">${q.monster.icon}</div>
-      <b>《${esc(q.title)}》</b>
-      <div class="muted">${g.name} · ${q.monster.name}</div>
-      <div class="${done ? 'stars' : 'muted'}">${done ? starStr(rec.firstStars) : '未挑战'}</div>
+  /* 挑战小径：蛇形关卡，全部开放不锁定，第一个没通关的亮 START */
+  const firstOpen = QUESTS.findIndex(q => !(ME.quests[q.id] && ME.quests[q.id].cleared));
+  const cols = zigzagCols(QUESTS.length);
+  $('questList').innerHTML = QUESTS.map((q, i) => {
+    const qDone = ME.quests[q.id] && ME.quests[q.id].cleared;
+    const cur = i === firstOpen;
+    return `<div class="qp-node" style="grid-column:${cols[i]}" data-quest="${q.id}" title="${esc(q.title)}">
+      ${cur ? '<div class="qp-start">START</div>' : ''}
+      <button class="qp-btn ${qDone ? 'done' : 'open'}${cur ? ' mx-bounce' : ''}">${qDone ? '✓' : '⭐'}</button>
+      ${cur ? `<div class="qp-label">${esc(q.title)}</div>` : ''}
     </div>`;
   }).join('');
   $('questList').querySelectorAll('[data-quest]').forEach(el =>
     el.onclick = () => startBattle(el.dataset.quest));
 
   view('home');
+}
+
+/* 连胜周视图：本周格子，从今天往回点亮连续达成的天数 */
+function renderStreakWeek() {
+  const names = ['一', '二', '三', '四', '五', '六', '日'];
+  const todayIdx = (new Date().getDay() + 6) % 7;   // 周一 = 0
+  const lit = ME.streak.last === todayStr() ? ME.streak.days : Math.max(0, ME.streak.days - 1);
+  $('streakWeek').innerHTML = names.map((n, i) => {
+    const back = todayIdx - i;
+    const on = back >= 0 && back < lit;
+    return `<div class="st-d"><div class="st-dot${on ? ' on' : ''}">🔥</div><span>${n}</span></div>`;
+  }).join('');
 }
 
 /* 复习推荐：只推荐，不降级、不锁定、不显示待办总数 */
@@ -204,6 +283,7 @@ function passRecite() {
     lastReciteAt: Date.now(),
     usedCount: prev ? prev.usedCount : 0
   };
+  bumpDaily();
   saveDB();
   const m = mat(id);
   const slotNames = m.slotTypes.map(t => SLOT_TYPES[t].name).join('/');

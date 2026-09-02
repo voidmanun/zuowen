@@ -51,6 +51,25 @@
     <h1 id="homeHi"></h1>
     <p class="sub">先去练功房把素材背成技能，再去挑战里把技能拼进作文骨架。</p>
 
+    <div class="goal-row">
+      <div class="card goal-card">
+        <div id="goalRing" class="goal-ring"></div>
+        <div>
+          <div class="goal-title">今日目标</div>
+          <div class="muted goal-text" id="goalText"></div>
+        </div>
+      </div>
+      <div class="card streak-card">
+        <div class="streak-head"><b>🔥 连胜 <span id="streakDays">0</span> 天</b><span class="muted" id="streakHint"></span></div>
+        <div class="streak-week" id="streakWeek"></div>
+      </div>
+    </div>
+
+    <div class="continue-block">
+      <button class="btn continue-btn" id="continueBtn">继续学习</button>
+      <div class="muted continue-sub" id="continueSub"></div>
+    </div>
+
     <div class="stat-strip">
       <div class="stat"><b id="stSkills">0</b><span>已掌握技能</span></div>
       <div class="stat"><b id="stStars">0</b><span>累计星星</span></div>
@@ -65,7 +84,8 @@
     <div class="grid" id="genreListLearn"></div>
 
     <h2>挑战 · 打怪兽</h2>
-    <div class="grid" id="questList"></div>
+    <p class="muted">关卡全部开放，不锁定；第一个没通关的亮着 START，点星星就开打。</p>
+    <div id="questList" class="quest-path"></div>
   </section>
 
   <!-- ============ 练功房 ============ -->
