@@ -122,9 +122,10 @@
     </div>
 
     <h2>作文骨架</h2>
-    <p class="muted">点一个槽位，再从下面挑一条技能填进去。填错不扣任何东西，随时能换。</p>
+    <p class="muted">点一个槽位，从弹出的技能库里挑一条填进去。填错不扣任何东西，随时能换。</p>
     <div id="slotList"></div>
 
+    <div class="picker-mask" id="pickerMask" hidden></div>
     <div class="card" id="pickerBox" hidden>
       <div class="row" style="justify-content:space-between">
         <b id="pickerTitle"></b>
@@ -135,13 +136,14 @@
     </div>
 
     <div class="row" style="margin-top:16px">
-      <button class="btn" id="submitBtn">提交，开打！</button>
+      <button class="btn" id="submitBtn">开打 ⚔️</button>
       <span class="muted" id="fillCount"></span>
     </div>
   </section>
 
   <!-- ============ 结果 ============ -->
   <section class="view" id="view-result" hidden>
+    <div class="confetti" id="resConfetti"></div>
     <h1 id="resTitle"></h1>
     <div class="result-stars" id="resStars"></div>
     <p class="sub" id="resSummary"></p>

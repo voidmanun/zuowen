@@ -165,38 +165,50 @@ h2 { font-size: 1.2rem; margin: 24px 0 10px; }
 .reward-row { display: flex; gap: 10px; justify-content: center; margin: 16px 0; }
 .reward-chip { flex: 1; max-width: 160px; background: #fff; border: 2px solid var(--mx-green); border-radius: 12px; padding: 10px 6px; font-weight: 800; color: var(--mx-green-text); }
 .reward-chip .rc-icon { font-size: 1.5rem; }
-/* ---------- 战斗 ---------- */
+/* ---------- 战斗（多邻国：底部弹出选择器 + 受击抖动 + 判定胶囊） ---------- */
 .monster-box { display: flex; align-items: center; gap: 14px; }
-.monster-box .face { font-size: 3rem; }
-.hpbar { flex: 1; height: 22px; border: 2px solid var(--ink); border-radius: 999px; background: #f3e5cb; overflow: hidden; }
-.hpbar > i { display: block; height: 100%; background: linear-gradient(90deg, #d9564a, #e78b3f); transition: width .5s; }
+.monster-box .face { font-size: 3rem; display: inline-block; }
+.hpbar { flex: 1; height: 22px; border: 2px solid var(--ink); border-radius: 999px; background: var(--mx-red-bg); overflow: hidden; }
+.hpbar > i { display: block; height: 100%; background: var(--mx-red); transition: width .5s; }
 .hp-num { font-variant-numeric: tabular-nums; font-weight: 700; }
 
 .slot {
   border: 2px dashed var(--line); border-radius: var(--radius); padding: 12px 14px;
   background: var(--paper-2); margin-bottom: 10px; cursor: pointer;
 }
-.slot:hover { border-color: var(--brand); }
-.slot.active { border-style: solid; border-color: var(--brand); background: #fff6ea; }
+.slot:hover { border-color: var(--mx-blue); }
 .slot.filled { border-style: solid; }
 .slot .slot-head { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: .95rem; }
 .slot .slot-hint { color: var(--ink-soft); font-size: .84rem; }
 .slot .slot-fill { margin-top: 6px; }
-.slot.fit-full { border-color: var(--good); background: #f2fbf5; }
-.slot.fit-half { border-color: var(--half); background: #fff8e6; }
-.slot.fit-none { border-color: var(--bad); background: #fdeeea; }
-.verdict { font-size: .88rem; margin-top: 6px; }
-.verdict.full { color: var(--good); }
-.verdict.half { color: #a9761a; }
-.verdict.none { color: var(--bad); }
+.slot.fit-full { border-color: var(--mx-green); background: #f2fbf5; }
+.slot.fit-half { border-color: var(--mx-yellow); background: #fff8e6; }
+.slot.fit-none { border-color: var(--mx-red); background: var(--mx-red-bg); }
+.slot.active { border-style: solid; border-color: var(--mx-blue); background: var(--mx-blue-bg); }
+.verdict { font-size: .88rem; margin-top: 8px; border-radius: 10px; padding: 8px 12px; line-height: 1.6; }
+.verdict.full { color: var(--mx-green-text); background: var(--mx-green-bg); }
+.verdict.half { color: var(--mx-yellow-dark); background: #fff8e6; }
+.verdict.none { color: var(--mx-red-dark); background: var(--mx-red-bg); }
+
+/* 技能选择器：底部弹出面板（多邻国 sheet），遮罩点击关闭 */
+.picker-mask { position: fixed; inset: 0; background: rgba(43, 33, 24, .4); z-index: 55; }
+#pickerBox {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: 0;
+  width: 100%; max-width: 560px; z-index: 60;
+  border-radius: 24px 24px 0 0; border-bottom: none;
+  animation: mxSheet .22s ease-out;
+  max-height: 76vh; overflow: auto;
+  box-shadow: 0 -8px 30px rgba(43, 33, 24, .18);
+}
+#pickerBox .skill-pick { max-height: none; }
 
 .skill-pick { max-height: 46vh; overflow: auto; display: grid; gap: 8px; }
 .skill-item {
-  border: 2px solid var(--line); border-radius: 10px; padding: 8px 12px;
-  background: var(--paper-2); cursor: pointer; text-align: left;
+  border: 2px solid var(--mx-gray); border-bottom-width: 4px; border-radius: 12px; padding: 8px 12px;
+  background: #fff; cursor: pointer; text-align: left;
 }
-.skill-item:hover { border-color: var(--brand); }
-.skill-item.fresh { box-shadow: inset 3px 0 0 var(--good); }
+.skill-item:hover { border-color: var(--mx-blue); }
+.skill-item.fresh { box-shadow: inset 3px 0 0 var(--mx-green); }
 .dmg-float {
   position: fixed; left: 50%; top: 30%; transform: translateX(-50%);
   font-size: 2.6rem; font-weight: 800; color: var(--bad); pointer-events: none;
@@ -204,7 +216,8 @@ h2 { font-size: 1.2rem; margin: 24px 0 10px; }
 }
 @keyframes fly { to { transform: translate(-50%, -70px); opacity: 0; } }
 
-/* ---------- 结果 ---------- */
+/* ---------- 结果（通关撒彩带） ---------- */
+#view-result { position: relative; overflow: hidden; }
 .result-stars { font-size: 2.4rem; letter-spacing: 6px; color: var(--brand); }
 .miss-item { border-left: 3px solid var(--half); padding: 4px 0 4px 10px; margin: 8px 0; }
 
@@ -241,7 +254,7 @@ label { display: block; font-weight: 700; margin: 14px 0 4px; font-size: .92rem;
 @keyframes mxShake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
 @keyframes mxBounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
 @keyframes mxUp { 0% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-52px); } }
-@keyframes mxSheet { from { transform: translateY(100%); } to { transform: translateY(0); } }
+@keyframes mxSheet { from { transform: translateX(-50%) translateY(100%); } to { transform: translateX(-50%); } }
 @keyframes mxConf { 0% { transform: translateY(-14vh) rotate(0); } 100% { transform: translateY(112vh) rotate(660deg); } }
 .mx-pop { animation: mxPop .2s ease-out; }
 .mx-shake { animation: mxShake .32s; }

@@ -84,6 +84,12 @@ function renderSlots() {
 }
 
 /* ---------------- 选技能：只能从技能库里取 ---------------- */
+function hidePicker() {
+  $('pickerBox').hidden = true;
+  $('pickerMask').hidden = true;
+  battle.activeSlot = null;
+}
+
 function openPicker(slotIndex) {
   battle.activeSlot = slotIndex;
   const q = quest(battle.questId);
@@ -114,14 +120,13 @@ function openPicker(slotIndex) {
     $('pickerList').querySelectorAll('[data-pick]').forEach(el => el.onclick = () => {
       battle.fills[slotIndex] = el.dataset.pick;
       battle.judged = false;
-      $('pickerBox').hidden = true;
-      battle.activeSlot = null;
+      hidePicker();
       renderSlots();
     });
   }
   $('pickerBox').hidden = false;
+  $('pickerMask').hidden = false;
   renderSlots();
-  $('pickerBox').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 async function submitBattle() {
@@ -145,6 +150,7 @@ async function submitBattle() {
   renderSlots();
   setHp(Math.max(0, hp - dmg), hp);
   flashDamage(dmg);
+  shakeFace();
 
   const cleared = dmg >= hp;
   const misuse = detail.filter(x => x.m && x.j.fit < 1);
@@ -159,6 +165,15 @@ async function submitBattle() {
 
   showResult(q, { dmg, hp, cleared, detail, misuse, rec });
   enrichWithAi(q, detail);
+}
+
+/* 怪兽被打中：抖一下。remove + 读 offsetWidth 强制回流，重复提交也能重播动画 */
+function shakeFace() {
+  const f = $('mFace');
+  f.classList.remove('mx-shake');
+  void f.offsetWidth;
+  f.classList.add('mx-shake');
+  setTimeout(() => f.classList.remove('mx-shake'), 420);
 }
 
 function flashDamage(dmg) {
@@ -186,6 +201,7 @@ function findMissed(q) {
 
 function showResult(q, r) {
   const missed = findMissed(q);
+  if (r.cleared) burstConfetti($('resConfetti'));   // 通关彩带，同庆祝页（app.js）
   $('resTitle').textContent = r.cleared
     ? `🎉 ${q.monster.name} 被打倒了！`
     : `${q.monster.icon} ${q.monster.name} 还剩 ${r.hp - r.dmg} 点血`;
@@ -285,7 +301,8 @@ async function runSelfTest() {
 /* ---------------- 绑定 ---------------- */
 function bindBattle() {
   $('submitBtn').onclick = submitBattle;
-  $('pickerClose').onclick = () => { $('pickerBox').hidden = true; battle.activeSlot = null; renderSlots(); };
+  $('pickerClose').onclick = () => { hidePicker(); renderSlots(); };
+  $('pickerMask').onclick = hidePicker;
   $('againBtn').onclick = () => {
     // 重打时怪兽回满血：上一轮的伤害不能累加，否则“换一条再提交”会假通关
     const q = quest(battle.questId);
