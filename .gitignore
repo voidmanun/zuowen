@@ -1,0 +1,7 @@
+# macOS 拷贝产生的 AppleDouble 文件，全是垃圾
+._*
+.DS_Store
+
+# 日志与临时文件
+*.log
+*.tmp

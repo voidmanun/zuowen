@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>作文积木 · 背素材，打怪兽</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🧱%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <span class="logo">🧱 作文积木</span>
+  <span class="who" id="whoami"></span>
+  <span class="spacer"></span>
+  <button class="btn ghost small" id="navHome">大厅</button>
+  <button class="btn ghost small" id="navSettings">设置</button>
+  <button class="btn ghost small" id="navSwitch">换人</button>
+</header>
+
+<main class="wrap">
+
+  <!-- ============ 档案选择 ============ -->
+  <section class="view" id="view-profile">
+    <h1>是谁来练作文？</h1>
+    <p class="sub">每个人的技能库分开存，互不影响。数据只存在这台电脑的浏览器里。</p>
+    <div class="grid" id="profileList"></div>
+    <h2>新建一个</h2>
+    <div class="card">
+      <label for="newName">名字</label>
+      <input type="text" id="newName" maxlength="8" placeholder="比如：小海">
+      <label for="newGrade">年级</label>
+      <select id="newGrade">
+        <option value="4">四年级</option>
+        <option value="5">五年级</option>
+        <option value="6">六年级</option>
+      </select>
+      <p class="muted" style="margin-top:10px">年级只决定默认推荐几星素材，随时可以自己解锁更难的。</p>
+      <button class="btn" id="createProfile">开始</button>
+    </div>
+    <h2>备份与恢复</h2>
+    <div class="card row">
+      <button class="btn ghost small" id="exportAll">导出全部档案 JSON</button>
+      <label for="importFile" style="margin:0"><span class="btn ghost small">导入 JSON</span></label>
+      <input type="file" id="importFile" accept="application/json" hidden>
+    </div>
+  </section>
+
+  <!-- ============ 大厅 ============ -->
+  <section class="view" id="view-home" hidden>
+    <h1 id="homeHi"></h1>
+    <p class="sub">先去练功房把素材背成技能，再去挑战里把技能拼进作文骨架。</p>
+
+    <div class="stat-strip">
+      <div class="stat"><b id="stSkills">0</b><span>已掌握技能</span></div>
+      <div class="stat"><b id="stStars">0</b><span>累计星星</span></div>
+      <div class="stat"><b id="stCleared">0</b><span>打倒的怪兽</span></div>
+      <div class="stat"><b id="stUsed">0</b><span>真正用过的技能</span></div>
+    </div>
+    <p class="muted" id="usedHint"></p>
+
+    <div id="reviewBlock"></div>
+
+    <h2>练功房 · 背素材</h2>
+    <div class="grid" id="genreListLearn"></div>
+
+    <h2>挑战 · 打怪兽</h2>
+    <div class="grid" id="questList"></div>
+  </section>
+
+  <!-- ============ 练功房 ============ -->
+  <section class="view" id="view-learn" hidden>
+    <button class="btn ghost small" data-back>← 返回大厅</button>
+    <h1 id="learnTitle"></h1>
+    <p class="sub" id="learnSub"></p>
+    <div id="learnList" class="skill-pick" style="max-height:none"></div>
+  </section>
+
+  <!-- ============ 背诵验收 ============ -->
+  <section class="view" id="view-recite" hidden>
+    <button class="btn ghost small" data-back>← 放弃这条</button>
+    <h1>背诵验收</h1>
+    <p class="sub" id="reciteStage"></p>
+    <div class="card" id="reciteBox"></div>
+  </section>
+
+  <!-- ============ 挑战 ============ -->
+  <section class="view" id="view-battle" hidden>
+    <button class="btn ghost small" data-back>← 撤退（不算失败）</button>
+    <h1 id="battleTitle"></h1>
+    <p class="sub" id="battleBrief"></p>
+
+    <div class="card monster-box">
+      <span class="face" id="mFace">👾</span>
+      <div style="flex:1">
+        <div class="row" style="justify-content:space-between">
+          <b id="mName"></b>
+          <span class="hp-num"><span id="hpNow"></span> / <span id="hpMax"></span></span>
+        </div>
+        <div class="hpbar"><i id="hpFill" style="width:100%"></i></div>
+      </div>
+    </div>
+
+    <h2>作文骨架</h2>
+    <p class="muted">点一个槽位，再从下面挑一条技能填进去。填错不扣任何东西，随时能换。</p>
+    <div id="slotList"></div>
+
+    <div class="card" id="pickerBox" hidden>
+      <div class="row" style="justify-content:space-between">
+        <b id="pickerTitle"></b>
+        <button class="btn ghost small" id="pickerClose">收起</button>
+      </div>
+      <p class="muted" id="pickerHint"></p>
+      <div class="skill-pick" id="pickerList"></div>
+    </div>
+
+    <div class="row" style="margin-top:16px">
+      <button class="btn" id="submitBtn">提交，开打！</button>
+      <span class="muted" id="fillCount"></span>
+    </div>
+  </section>
+
+  <!-- ============ 结果 ============ -->
+  <section class="view" id="view-result" hidden>
+    <h1 id="resTitle"></h1>
+    <div class="result-stars" id="resStars"></div>
+    <p class="sub" id="resSummary"></p>
+    <div class="card" id="resDetail"></div>
+    <div class="row" style="margin-top:16px">
+      <button class="btn" id="againBtn">回去调整，再打一次</button>
+      <button class="btn ghost" id="resHome">回大厅</button>
+    </div>
+  </section>
+
+  <!-- ============ 设置 ============ -->
+  <section class="view" id="view-settings" hidden>
+    <button class="btn ghost small" data-back>← 返回</button>
+    <h1>设置</h1>
+
+    <div class="card">
+      <b>AI 点评</b>
+      <p class="muted">模型的钥匙放在服务器上，<b>不在这个网页里</b>，所以你不需要填任何东西，
+        别人也无法从页面里拿到它。提交拼搭后，逐槽点评由本地规则立即算出，AI 只在后面补一段更具体的建议。
+        AI 拿不到也不影响打怪。</p>
+      <div class="row" style="margin-top:12px">
+        <button class="btn ghost small" id="testConn">服务端自检</button>
+      </div>
+      <div class="log" id="connLog" hidden></div>
+    </div>
+
+    <div class="card" style="margin-top:14px">
+      <b>这个档案</b>
+      <p class="muted" id="setProfileInfo"></p>
+      <label for="setGrade">年级</label>
+      <select id="setGrade">
+        <option value="4">四年级</option>
+        <option value="5">五年级</option>
+        <option value="6">六年级</option>
+      </select>
+      <div class="row" style="margin-top:12px">
+        <button class="btn small" id="saveGrade">保存年级</button>
+        <button class="btn ghost small" id="exportOne">导出这个档案</button>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<script src="corpus.js"></script>
+<script src="quests.js"></script>
+<script src="app.js"></script>
+<script src="battle.js"></script>
+</body>
+</html>
