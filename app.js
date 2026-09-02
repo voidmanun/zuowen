@@ -283,6 +283,7 @@ function passRecite() {
     lastReciteAt: Date.now(),
     usedCount: prev ? prev.usedCount : 0
   };
+  const streakBefore = ME.streak.last;   // 背之前先记下，下面用它判断「这条是不是刚好达成日目标」
   bumpDaily();
   saveDB();
   const m = mat(id);
@@ -312,6 +313,7 @@ function passRecite() {
     </div>`;
   $('reciteStage').textContent = '';
   burstConfetti($('confetti'));
+  streakBefore !== ME.streak.last ? sfx.goal() : sfx.win();   // 刚达成日目标：换更欢乐的号角
   $('nextOne').onclick = () => renderLearn(m.genre);
   $('backHome').onclick = renderHome;
 }
@@ -390,9 +392,11 @@ function reciteSeg() {
       el.classList.add('miss');
       setTimeout(() => el.classList.remove('miss'), 340);
       toast('这一块不是这个位置，再想想 🤔', 'bad');
+      sfx.wrong();
       return;
     }
     el.classList.add('used');
+    sfx.right();
     const placed = document.createElement('span');
     placed.className = 'frag put mx-pop';
     placed.textContent = el.textContent;      // 用 DOM 构造，不把文本再当 HTML 解析一次
@@ -422,6 +426,8 @@ function renderSettings() {
 
 function bindSettings() {
   $('testConn').onclick = runSelfTest;
+  $('setSound').checked = sfx.isOn();
+  $('setSound').onchange = e => { sfx.toggle(e.target.checked); if (e.target.checked) sfx.tick(); };
   $('saveGrade').onclick = () => {
     ME.grade = Number($('setGrade').value); saveDB();
     $('whoami').textContent = `· ${ME.name}（${ME.grade}年级）`;
@@ -470,6 +476,9 @@ function boot() {
   $('navSettings').onclick = renderSettings;
   $('navSwitch').onclick = renderProfiles;
   document.querySelectorAll('[data-back]').forEach(b => b.onclick = () => ME ? renderHome() : renderProfiles());
+
+  /* 按钮轻点音：全局委托一次，动态渲染出来的按钮也生效 */
+  document.addEventListener('pointerdown', e => { if (e.target.closest('.btn')) sfx.tick(); });
 
   const last = DB.profiles.find(p => p.id === DB.lastProfileId);
   last ? enter(last.id) : renderProfiles();

@@ -120,12 +120,14 @@ function openPicker(slotIndex) {
     $('pickerList').querySelectorAll('[data-pick]').forEach(el => el.onclick = () => {
       battle.fills[slotIndex] = el.dataset.pick;
       battle.judged = false;
+      sfx.pick();
       hidePicker();
       renderSlots();
     });
   }
   $('pickerBox').hidden = false;
   $('pickerMask').hidden = false;
+  sfx.sheet();
   renderSlots();
 }
 
@@ -151,6 +153,7 @@ async function submitBattle() {
   setHp(Math.max(0, hp - dmg), hp);
   flashDamage(dmg);
   shakeFace();
+  sfx.hit();
 
   const cleared = dmg >= hp;
   const misuse = detail.filter(x => x.m && x.j.fit < 1);
@@ -201,7 +204,8 @@ function findMissed(q) {
 
 function showResult(q, r) {
   const missed = findMissed(q);
-  if (r.cleared) burstConfetti($('resConfetti'));   // 通关彩带，同庆祝页（app.js）
+  if (r.cleared) { burstConfetti($('resConfetti')); sfx.win(); }   // 通关彩带+号角，同庆祝页（app.js）
+  else sfx.lose();
   $('resTitle').textContent = r.cleared
     ? `🎉 ${q.monster.name} 被打倒了！`
     : `${q.monster.icon} ${q.monster.name} 还剩 ${r.hp - r.dmg} 点血`;
