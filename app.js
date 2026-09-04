@@ -42,6 +42,45 @@ function newProfile(name, grade) {
   };
 }
 
+/* 导入清洗：只认结构齐全的档案；技能/挑战里不认识的 ID 丢掉，缺的字段补默认。
+   宁可少导，也不能让一条畸形数据把大厅渲染搞崩（mat() 查不到 id 会直接拖偓整页）。 */
+function sanitizeProfile(p) {
+  if (!p || typeof p !== 'object' || typeof p.id !== 'string' || !p.id ||
+      typeof p.name !== 'string' || !p.name) return null;
+  const num = (v, max) => Math.min(max, Math.max(0, Number(v) || 0));
+  const clean = {
+    id: p.id,
+    name: p.name.slice(0, 8),
+    grade: [4, 5, 6].includes(Number(p.grade)) ? Number(p.grade) : 4,
+    createdAt: Number(p.createdAt) || Date.now(),
+    skills: {},
+    quests: {},
+    dailyGoal: { date: String((p.dailyGoal && p.dailyGoal.date) || ''), count: num(p.dailyGoal && p.dailyGoal.count, 9999) },
+    streak: { last: String((p.streak && p.streak.last) || ''), days: num(p.streak && p.streak.days, 9999) }
+  };
+  if (p.skills && typeof p.skills === 'object') {
+    for (const [id, s] of Object.entries(p.skills)) {
+      if (!mat(id) || !s || typeof s !== 'object') continue;    // 素材库里没有的技能：丢
+      clean.skills[id] = {
+        learnedAt: Number(s.learnedAt) || Date.now(),
+        lastReciteAt: Number(s.lastReciteAt) || Date.now(),
+        usedCount: num(s.usedCount, 9999)
+      };
+    }
+  }
+  if (p.quests && typeof p.quests === 'object') {
+    for (const [id, q] of Object.entries(p.quests)) {
+      if (!quest(id) || !q || typeof q !== 'object') continue;  // 题目库里没有的挑战：丢
+      clean.quests[id] = {
+        tries: num(q.tries, 9999),
+        cleared: !!q.cleared,
+        firstStars: num(q.firstStars, 3)
+      };
+    }
+  }
+  return clean;
+}
+
 /* ---------------- 小工具 ---------------- */
 const $  = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
@@ -473,13 +512,23 @@ function boot() {
       try {
         const d = JSON.parse(r.result);
         if (!d.profiles) throw new Error('文件里没有 profiles');
-        d.profiles.forEach(p => {
-          const hit = DB.profiles.findIndex(x => x.id === p.id);
-          hit >= 0 ? DB.profiles[hit] = p : DB.profiles.push(p);
-        });
-        saveDB(); renderProfiles(); toast('导入成功', 'good');
+        const incoming = d.profiles.map(sanitizeProfile).filter(Boolean);   // 清洗：畸形档案在这里被丢掉
+        if (!incoming.length) throw new Error('文件里没有能用的档案');
+        /* 覆盖确认：同名档案的现有进度会被替换，不可撤销，必须先问 */
+        const replaced = incoming.filter(p => DB.profiles.some(x => x.id === p.id));
+        const doImport = () => {
+          incoming.forEach(p => {
+            const hit = DB.profiles.findIndex(x => x.id === p.id);
+            hit >= 0 ? DB.profiles[hit] = p : DB.profiles.push(p);
+          });
+          saveDB(); renderProfiles(); toast('导入成功', 'good');
+        };
+        if (replaced.length && !confirm(`文件里有 ${replaced.length} 个档案已存在（${replaced.map(p => p.name).join('、')}），导入会替换它们现在的进度。确定继续吗？`)) {
+          toast('已取消导入，现在的进度没动');
+        } else doImport();
       } catch (err) { toast('导入失败：' + err.message, 'bad'); }
     };
+    e.target.value = '';   // 同一个文件再选一次也能触发 onchange
     r.readAsText(f);
   };
 
