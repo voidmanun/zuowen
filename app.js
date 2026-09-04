@@ -494,6 +494,24 @@ function download(name, text) {
 
 /* ---------------- 启动 ---------------- */
 function boot() {
+  /* 全局错误兜底：真出问题时给家长一句人话，而不是白屏装死。
+     同一句话 5 秒内不刷屏（渲染类错误常常连发）；原始错误仍进控制台方便排查。 */
+  let lastErrMsg = '', lastErrAt = 0;
+  const reportErr = msg => {
+    const now = Date.now();
+    if (msg === lastErrMsg && now - lastErrAt < 5000) return;
+    lastErrMsg = msg; lastErrAt = now;
+    toast(msg, 'bad');
+  };
+  window.addEventListener('error', ev => {
+    reportErr('页面出了点小问题，刷新一下通常就好。进度存在浏览器里，不会丢。');
+    console.error('[global]', ev.message);
+  });
+  window.addEventListener('unhandledrejection', ev => {
+    reportErr('有个后台任务没成功（多半是网络），背诵和打怪不受影响。');
+    console.error('[global]', ev.reason);
+  });
+
   loadDB();
   bindSettings();
   bindBattle();          // battle.js
