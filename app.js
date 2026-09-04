@@ -17,7 +17,18 @@ function loadDB() {
   if (!DB || !Array.isArray(DB.profiles)) DB = { profiles: [], lastProfileId: null, settings: {} };
   return DB;
 }
-function saveDB() { localStorage.setItem(STORE_KEY, JSON.stringify(DB)); }
+function saveDB() {
+  try {
+    localStorage.setItem(STORE_KEY, JSON.stringify(DB));
+  } catch (e) {
+    /* 隐私模式禁存储 / 配额满：不让保存失败炸掉整个操作，提醒一次就够，别每次保存都弹 */
+    if (!storageWarned) {
+      storageWarned = true;
+      toast('这台浏览器现在存不了进度（可能是隐私模式），关页面前记得导出备份。', 'bad');
+    }
+  }
+}
+let storageWarned = false;
 
 function newProfile(name, grade) {
   return {
