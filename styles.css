@@ -222,9 +222,10 @@ h2 { font-size: 1.2rem; margin: 24px 0 10px; }
 .miss-item { border-left: 3px solid var(--half); padding: 4px 0 4px 10px; margin: 8px 0; }
 
 /* ---------- 设置 ---------- */
-input[type="text"], input[type="password"], select {
+input[type="text"], input[type="password"], select, textarea {
   font: inherit; padding: 8px 10px; border: 2px solid var(--line);
   border-radius: 10px; background: var(--paper-2); color: var(--ink); width: 100%;
+  resize: vertical;
 }
 label { display: block; font-weight: 700; margin: 14px 0 4px; font-size: .92rem; }
 .check-row { display: flex; gap: 10px; align-items: flex-start; margin: 10px 0; }

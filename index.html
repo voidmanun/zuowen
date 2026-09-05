@@ -81,6 +81,7 @@
     <div id="reviewBlock"></div>
 
     <h2>练功房 · 背素材</h2>
+    <p class="muted">攒了自己的好句子？<button class="btn ghost small" id="homeCustom">＋ 手工录入素材</button>，录完去练功房背。</p>
     <div class="grid" id="genreListLearn"></div>
 
     <h2>挑战 · 打怪兽</h2>
@@ -94,6 +95,35 @@
     <h1 id="learnTitle"></h1>
     <p class="sub" id="learnSub"></p>
     <div id="learnList" class="skill-pick" style="max-height:none"></div>
+  </section>
+
+  <!-- ============ 手工录入素材 ============ -->
+  <section class="view" id="view-custom" hidden>
+    <button class="btn ghost small" data-back>← 返回</button>
+    <h1>✍️ 手工录入素材</h1>
+    <p class="sub">把课外书、作业里遇到的好句子录进素材库，和其他素材一样背、一样拿去打怪。
+      素材库在这台电脑上所有档案共用；删掉素材会连各档案对它的背诵记录一起删掉。</p>
+    <div class="card">
+      <label for="cusGenre">题材</label>
+      <select id="cusGenre"></select>
+      <label for="cusStars">星级</label>
+      <select id="cusStars">
+        <option value="1">★ 1 星 · 简单顺口</option>
+        <option value="2" selected>★★ 2 星 · 有点水平</option>
+        <option value="3">★★★ 3 星 · 得意好句</option>
+      </select>
+      <label for="cusText">素材文本</label>
+      <textarea id="cusText" rows="3" maxlength="150"
+        placeholder="照着抄一句好句子。想自己断词就用 | 隔开，比如：他个子不高，| 排队总在第二个，| 可跑起来谁也追不上。"></textarea>
+      <p class="muted" style="margin-top:8px">不加 | 就自动分词；句子里有「他」的自动算写男生，有「她」的算写女生，
+        都没有的挂「通用」，任何题都合适。</p>
+      <div class="row" style="margin-top:12px">
+        <button class="btn" id="cusSave">收进素材库</button>
+        <span class="muted" id="cusCount"></span>
+      </div>
+    </div>
+    <h2>已录入的素材</h2>
+    <div id="cusList" class="skill-pick" style="max-height:none"></div>
   </section>
 
   <!-- ============ 背诵验收 ============ -->

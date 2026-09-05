@@ -15,6 +15,7 @@ let ME = null;          // 当前档案
 function loadDB() {
   try { DB = JSON.parse(localStorage.getItem(STORE_KEY)) || null; } catch (e) { DB = null; }
   if (!DB || !Array.isArray(DB.profiles)) DB = { profiles: [], lastProfileId: null, settings: {} };
+  if (!Array.isArray(DB.customMaterials)) DB.customMaterials = [];   // 手工素材与档案无关，全局一份
   return DB;
 }
 function saveDB() {
@@ -86,6 +87,8 @@ const $  = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
 const starStr = n => '★'.repeat(n) + '☆'.repeat(3 - n);
 const mat = id => CORPUS.find(m => m.id === id);
+/* 手工素材默认适配题材内全部槽位，列表里显示一串槽位名太长，统一说「位置不限」 */
+const slotNamesOf = m => m.custom ? '位置不限' : m.slotTypes.map(t => SLOT_TYPES[t].name).join('/');
 const quest = id => QUESTS.find(q => q.id === id);
 const genre = id => GENRES.find(g => g.id === id);
 const days = ms => Math.floor(ms / 86400000);
@@ -268,7 +271,8 @@ function renderReview() {
   const now = Date.now();
   const stale = owned()
     .map(id => ({ id, s: ME.skills[id] }))
-    .filter(x => x.s.usedCount === 0 && days(now - (x.s.lastReciteAt || x.s.learnedAt)) >= REVIEW_DAYS)
+    /* mat() 查不到的孤儿技能（素材已被删、进度是残留）直接跳过，不能让渲染崩 */
+    .filter(x => mat(x.id) && x.s.usedCount === 0 && days(now - (x.s.lastReciteAt || x.s.learnedAt)) >= REVIEW_DAYS)
     .slice(0, 3);
   const box = $('reviewBlock');
   if (!stale.length) { box.innerHTML = ''; return; }
@@ -293,27 +297,151 @@ function renderLearn(gid) {
 
   $('learnTitle').textContent = `${g.icon} ${g.name} · 练功房`;
   $('learnSub').innerHTML = `按 ${ME.grade} 年级默认只显示 ${stars.join('、')} 星素材。
-    <button class="btn ghost small" id="toggleStars">${learnState.showAll ? '只看推荐星级' : '显示全部星级'}</button>`;
+    <button class="btn ghost small" id="toggleStars">${learnState.showAll ? '只看推荐星级' : '显示全部星级'}</button>
+    <button class="btn ghost small" id="goCustom">＋ 手工录入</button>`;
 
   $('learnList').innerHTML = pool.map(m => {
     const has = ME.skills[m.id];
-    const slotNames = m.slotTypes.map(t => SLOT_TYPES[t].name).join('/');
     return `<div class="skill-item" ${has ? '' : `data-learn="${m.id}"`} style="${has ? 'opacity:.72' : ''}">
       <div>${esc(m.text)}</div>
       <div class="muted">
         <span class="stars">${starStr(m.stars)}</span>
-        <span class="tag">${slotNames}</span>
+        <span class="tag">${slotNamesOf(m)}</span>
         <span class="tag">${m.subjects.join(' ')}</span>
         <span class="tag">${m.grain}</span>
+        ${m.custom ? '<span class="tag">手工</span>' : ''}
         ${has ? `<b style="color:var(--good)">✓ 已掌握</b>` : '<b style="color:var(--brand-dark)">点一下开始背</b>'}
       </div>
     </div>`;
   }).join('') || '<p class="muted">这个星级下没有素材，点上面切换全部星级。</p>';
 
   $('toggleStars').onclick = () => { learnState.showAll = !learnState.showAll; renderLearn(gid); };
+  $('goCustom').onclick = () => openCustom(gid);
   $('learnList').querySelectorAll('[data-learn]').forEach(el =>
     el.onclick = () => startRecite(el.dataset.learn));
   view('learn');
+}
+
+/* ---------------- 手工录入：把文本素材收进素材库 ---------------- */
+
+/* 手工素材存 DB.customMaterials（全局一份，不属于任何档案），清洗后注进 CORPUS，
+   mat()/练功房/战斗判定/AI 判定就全都认识它了；服务端那份数据是独立的
+   （server.js 自己 require），AI 认不出时按规则点评照常，不会崩。 */
+
+/* 题材在题目骨架里实际用到的槽位：录入的素材默认这些位置都能放。
+   不逼录入者理解「槽位」术语——那是出题人的事。 */
+function genreSlots(gid) {
+  const out = [];
+  QUESTS.filter(q => q.genre === gid).forEach(q => q.slots.forEach(s => {
+    if (!out.includes(s.type)) out.push(s.type);
+  }));
+  return out.length ? out : ['opening', 'ending'];
+}
+
+/* 铁律（见 corpus.js 头注释）：句子里出现「他/她」不得挂中性对象。
+   手工素材没人标注，按代词保守推导：写「他」算男生，「她」算女生，都没有才挂通用。 */
+function guessSubjects(text) {
+  const she = text.includes('她'), he = /(?<!其)他/.test(text);   // 「其他」里的他不算
+  if (she && he) return ['男生', '女生'];
+  if (she) return ['女生'];
+  if (he) return ['男生'];
+  return ['通用'];
+}
+
+/* 手工素材清洗：与档案导入同一套思路——宁可丢一条，不让畸形数据拖垮渲染与判定。
+   chunks 只认 join 后与 text 逐字一致的（录入页用「|」切出来的天然满足，其余交给自动分词）。 */
+function sanitizeCustom(m) {
+  if (!m || typeof m !== 'object' || typeof m.text !== 'string') return null;
+  const text = m.text.trim();
+  if (text.length < 6 || text.length > 150) return null;
+  if (!GENRES.some(g => g.id === m.genre)) return null;
+  return {
+    id: typeof m.id === 'string' && m.id ? m.id : 'u' + Date.now().toString(36),
+    genre: m.genre,
+    slotTypes: genreSlots(m.genre),
+    subjects: guessSubjects(text),
+    stars: [1, 2, 3].includes(Number(m.stars)) ? Number(m.stars) : 2,
+    grain: text.length >= 45 ? '片段' : '句',
+    text,
+    chunks: Array.isArray(m.chunks) && m.chunks.length > 1 && m.chunks.join('') === text ? m.chunks : undefined,
+    custom: true
+  };
+}
+
+/* 先摘掉旧的再重放，保证可重复调用（导入合并后要重注一次） */
+function injectCustom() {
+  for (let i = CORPUS.length - 1; i >= 0; i--) if (CORPUS[i].custom) CORPUS.splice(i, 1);
+  DB.customMaterials.forEach(m => CORPUS.push(m));
+}
+
+/* boot 与导入时都会走：清洗一遍再注进 CORPUS（须在渲染任何页面前完成） */
+function loadCustom() {
+  DB.customMaterials = DB.customMaterials.map(sanitizeCustom).filter(Boolean);
+  injectCustom();
+}
+
+function renderCustom() {
+  const list = DB.customMaterials;
+  $('cusCount').textContent = list.length ? `已录入 ${list.length} 条` : '还没录入过';
+  $('cusList').innerHTML = list.map(m => `
+    <div class="skill-item">
+      <div>${esc(m.text)}</div>
+      <div class="muted">
+        <span class="stars">${starStr(m.stars)}</span>
+        <span class="tag">${genre(m.genre) ? genre(m.genre).name : '?'}</span>
+        <span class="tag">${slotNamesOf(m)}</span>
+        <span class="tag">${m.subjects.join(' ')}</span>
+        <span class="tag">${m.grain}</span>
+        ${m.chunks ? '<span class="tag">自标词块</span>' : ''}
+        <button class="btn ghost small" data-del="${m.id}">✕ 删除</button>
+      </div>
+    </div>`).join('') || '<p class="muted">还没有手工素材。上面录一条试试。</p>';
+  $('cusList').querySelectorAll('[data-del]').forEach(el =>
+    el.onclick = () => delCustom(el.dataset.del));
+}
+
+function openCustom(gid) {
+  const cur = gid || $('cusGenre').value || GENRES[0].id;   // 没指定就留在上次逃的题材
+  $('cusGenre').innerHTML = GENRES.map(g =>
+    `<option value="${g.id}"${g.id === cur ? ' selected' : ''}>${g.icon} ${g.name}</option>`).join('');
+  renderCustom();
+  view('custom');
+}
+
+function addCustom() {
+  const raw = $('cusText').value.trim();
+  if (!raw) return toast('先抄一句进来', 'bad');
+  /* 「|」自断词块：录的人最懂这句的节奏；没标就交给自动分词（matChunks 的兑底链） */
+  const parts = raw.split(/[|｜]/).map(s => s.trim()).filter(Boolean);
+  const text = parts.join('');
+  if (text.length < 6) return toast('太短了，凑够 6 个字吧', 'bad');
+  if (text.length > 150) return toast('太长了，一条素材别超过 150 字', 'bad');
+  const m = sanitizeCustom({
+    id: 'u' + Date.now().toString(36),
+    genre: $('cusGenre').value,
+    stars: Number($('cusStars').value),
+    text,
+    chunks: parts.length > 1 ? parts : undefined
+  });
+  DB.customMaterials.push(m);
+  saveDB();
+  injectCustom();
+  $('cusText').value = '';
+  sfx.pick();
+  toast('已收进素材库，去练功房就能背了', 'good');
+  renderCustom();
+}
+
+/* 删除要连带清掉所有档案对它的技能记录，否则残留 id 会在复习/选技时变成孤儿 */
+function delCustom(id) {
+  if (!mat(id) || !mat(id).custom) return;
+  if (!confirm('删掉这条手工素材？哪个档案背过它，哪里的记录也会一起删掉。')) return;
+  DB.customMaterials = DB.customMaterials.filter(m => m.id !== id);
+  DB.profiles.forEach(p => { delete p.skills[id]; });
+  saveDB();
+  injectCustom();
+  toast('已删除', 'good');
+  renderCustom();
 }
 
 /* ---------------- 背诵验收：词语级拼接，全对才算背会 ---------------- */
@@ -337,7 +465,7 @@ function passRecite() {
   bumpDaily();
   saveDB();
   const m = mat(id);
-  const slotNames = m.slotTypes.map(t => SLOT_TYPES[t].name).join('/');
+  const slotNames = slotNamesOf(m);
   $('reciteBox').innerHTML = `
     <div class="mx-celebrate">
       <div class="confetti" id="confetti"></div>
@@ -483,7 +611,9 @@ function bindSettings() {
     $('whoami').textContent = `· ${ME.name}（${ME.grade}年级）`;
     toast('年级已保存', 'good');
   };
-  $('exportOne').onclick = () => download(`作文积木-${ME.name}.json`, JSON.stringify({ profiles: [ME] }, null, 2));
+  /* 档案里背过的手工素材一起带走，不然换台电脑导入时这些技能会被当成野 ID 丢掉 */
+  $('exportOne').onclick = () => download(`作文积木-${ME.name}.json`,
+    JSON.stringify({ profiles: [ME], customMaterials: DB.customMaterials.filter(m => ME.skills[m.id]) }, null, 2));
 }
 
 function download(name, text) {
@@ -513,8 +643,12 @@ function boot() {
   });
 
   loadDB();
+  loadCustom();        // 手工素材注进 CORPUS，必须发生在任何渲染之前
   bindSettings();
   bindBattle();          // battle.js
+
+  $('homeCustom').onclick = () => openCustom(null);
+  $('cusSave').onclick = addCustom;
 
   $('createProfile').onclick = () => {
     const name = $('newName').value.trim();
@@ -522,7 +656,8 @@ function boot() {
     const p = newProfile(name, $('newGrade').value);
     DB.profiles.push(p); saveDB(); enter(p.id);
   };
-  $('exportAll').onclick = () => download('作文积木-全部档案.json', JSON.stringify({ profiles: DB.profiles }, null, 2));
+  $('exportAll').onclick = () => download('作文积木-全部档案.json',
+    JSON.stringify({ profiles: DB.profiles, customMaterials: DB.customMaterials }, null, 2));
   $('importFile').onchange = e => {
     const f = e.target.files[0]; if (!f) return;
     const r = new FileReader();
@@ -530,6 +665,16 @@ function boot() {
       try {
         const d = JSON.parse(r.result);
         if (!d.profiles) throw new Error('文件里没有 profiles');
+        if (Array.isArray(d.customMaterials) && d.customMaterials.length) {
+          /* 先把文件里的手工素材并入重放注入，下面的档案清洗才认得这些技能，不至于当野 ID 丢掉 */
+          const known = new Set(DB.customMaterials.map(m => m.id));
+          d.customMaterials.forEach(raw => {
+            const m = sanitizeCustom(raw);
+            if (!m || known.has(m.id)) return;   // 已有的保留本机版本，不覆盖
+            DB.customMaterials.push(m); known.add(m.id);
+          });
+          loadCustom();
+        }
         const incoming = d.profiles.map(sanitizeProfile).filter(Boolean);   // 清洗：畸形档案在这里被丢掉
         if (!incoming.length) throw new Error('文件里没有能用的档案');
         /* 覆盖确认：同名档案的现有进度会被替换，不可撤销，必须先问 */

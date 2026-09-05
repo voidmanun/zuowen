@@ -100,7 +100,7 @@ function openPicker(slotIndex) {
   $('pickerTitle').textContent = `给「${st.name}」挑一条技能`;
   $('pickerHint').textContent = st.hint + '（只显示你已经背下来的，同一条技能一篇里不能用两次）';
 
-  const mine = owned().filter(id => !used.has(id)).map(mat);
+  const mine = owned().filter(id => !used.has(id) && mat(id)).map(mat);   // 查不到的孤儿技能直接跳过
   if (!mine.length) {
     $('pickerList').innerHTML = '<p class="muted">技能库还是空的。先去练功房背几条，回来才有货可用。</p>';
   } else {
@@ -112,7 +112,7 @@ function openPicker(slotIndex) {
       return `<button class="skill-item ${fresh ? 'fresh' : ''}" data-pick="${m.id}">
         <div>${esc(m.text)}</div>
         <div class="muted"><span class="stars">${starStr(m.stars)}</span>
-          <span class="tag">${m.slotTypes.map(t => SLOT_TYPES[t].name).join('/')}</span>
+          <span class="tag">${slotNamesOf(m)}</span>
           <span class="tag">${m.subjects.join(' ')}</span>
           ${fresh ? '<b style="color:var(--good)">首次施放 +5</b>' : ''}</div>
       </button>`;
@@ -195,7 +195,7 @@ function findMissed(q) {
     owned().forEach(id => {
       if (usedIds.has(id)) return;
       const m = mat(id);
-      if (judgeOne(m, s).fit === 1) out.push({ slot: i, m });
+      if (m && judgeOne(m, s).fit === 1) out.push({ slot: i, m });
     });
   });
   const seen = new Set();
