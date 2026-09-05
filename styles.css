@@ -209,6 +209,9 @@ h2 { font-size: 1.2rem; margin: 24px 0 10px; }
 }
 .skill-item:hover { border-color: var(--mx-blue); }
 .skill-item.fresh { box-shadow: inset 3px 0 0 var(--mx-green); }
+.photo-material { cursor: default; }
+.photo-material textarea { min-height: 86px; }
+.photo-material .check-row { font-weight: 700; margin-top: 0; }
 .dmg-float {
   position: fixed; left: 50%; top: 30%; transform: translateX(-50%);
   font-size: 2.6rem; font-weight: 800; color: var(--bad); pointer-events: none;

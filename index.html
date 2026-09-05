@@ -115,6 +115,13 @@
         <option value="2" selected>★★ 2 星 · 有点水平</option>
         <option value="3">★★★ 3 星 · 得意好句</option>
       </select>
+      <label>从图片识别</label>
+      <div class="row">
+        <button class="btn ghost" id="cusPhoto">📷 拍照或选图</button>
+        <span class="muted" id="cusPhotoStatus"></span>
+      </div>
+      <input type="file" id="cusPhotoFile" accept="image/jpeg,image/png,image/webp" capture="environment" hidden>
+      <p class="muted" style="margin-top:8px">图片会发给 AI 识字，识别后即丢弃，不会保存。识别结果需要你确认才会进素材库。</p>
       <label for="cusText">素材文本</label>
       <textarea id="cusText" rows="3" maxlength="150"
         placeholder="照着抄一句好句子。想自己断词就用 | 隔开，比如：他个子不高，| 排队总在第二个，| 可跑起来谁也追不上。"></textarea>
@@ -124,6 +131,12 @@
         <button class="btn" id="cusSave">收进素材库</button>
         <span class="muted" id="cusCount"></span>
       </div>
+    </div>
+    <div class="card" id="cusPhotoPreview" hidden>
+      <h2 style="margin-top:0">识别结果</h2>
+      <p class="muted">勾选要保留的素材，先校对错字。文本里的 | 是背诵时的词块分隔。</p>
+      <div class="skill-pick" id="cusPhotoList" style="max-height:none"></div>
+      <button class="btn" id="cusPhotoSave" style="margin-top:12px">把选中素材收进素材库</button>
     </div>
     <h2>已录入的素材</h2>
     <div id="cusList" class="skill-pick" style="max-height:none"></div>

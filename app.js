@@ -12,6 +12,7 @@ const DAILY_GOAL = 3;   // 每天背 3 条算达成日目标，达成才计连�
 let DB = null;          // { profiles: [], lastProfileId, settings }
 let ME = null;          // 当前档案
 let AUTH = null;        // { username } | null：云端登录态；null = 游客，数据只在本机
+let customSeq = 0;
 
 /* ---------------- 存储 ---------------- */
 function loadDB() {
@@ -549,28 +550,104 @@ function openCustom(gid) {
   view('custom');
 }
 
-function addCustom() {
-  const raw = $('cusText').value.trim();
-  if (!raw) return toast('先抄一句进来', 'bad');
+function makeCustom(raw) {
+  raw = raw.trim();
+  if (!raw) throw new Error('先抄一句进来');
   /* 「|」自断词块：录的人最懂这句的节奏；没标就交给自动分词（matChunks 的兑底链） */
   const parts = raw.split(/[|｜]/).map(s => s.trim()).filter(Boolean);
   const text = parts.join('');
-  if (text.length < 6) return toast('太短了，凑够 6 个字吧', 'bad');
-  if (text.length > 150) return toast('太长了，一条素材别超过 150 字', 'bad');
-  const m = sanitizeCustom({
-    id: 'u' + Date.now().toString(36),
+  if (text.length < 6) throw new Error('太短了，凑够 6 个字吧');
+  if (text.length > 150) throw new Error('太长了，一条素材别超过 150 字');
+  return sanitizeCustom({
+    id: 'u' + Date.now().toString(36) + (customSeq++).toString(36),
     genre: $('cusGenre').value,
     stars: Number($('cusStars').value),
     text,
     chunks: parts.length > 1 ? parts : undefined
   });
-  DB.customMaterials.push(m);
+}
+
+function storeCustoms(materials) {
+  DB.customMaterials.push(...materials);
   saveDB();
   injectCustom();
-  $('cusText').value = '';
   sfx.pick();
-  toast('已收进素材库，去练功房就能背了', 'good');
   renderCustom();
+}
+
+function addCustom() {
+  let m;
+  try { m = makeCustom($('cusText').value); }
+  catch (e) { return toast(e.message, 'bad'); }
+  storeCustoms([m]);
+  $('cusText').value = '';
+  toast('已收进素材库，去练功房就能背了', 'good');
+}
+
+async function imageForAI(file) {
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) throw new Error('只支持 JPEG、PNG 或 WebP 图片');
+  const image = await createImageBitmap(file);
+  const scale = Math.min(1, 1800 / Math.max(image.width, image.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(image.width * scale);
+  canvas.height = Math.round(image.height * scale);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+  image.close();
+  const data = canvas.toDataURL('image/jpeg', .85);
+  if ((data.length - data.indexOf(',') - 1) * 3 / 4 > 2 * 1024 * 1024) throw new Error('图片太大，请裁剪后再试');
+  return data;
+}
+
+function renderPhotoMaterials(materials) {
+  $('cusPhotoList').innerHTML = materials.map((m, i) => {
+    const raw = Array.isArray(m.chunks) && m.chunks.join('') === m.text ? m.chunks.join('|') : m.text;
+    return `<div class="skill-item photo-material">
+      <label class="check-row"><input type="checkbox" data-photo-pick="${i}" checked> 保留第 ${i + 1} 条</label>
+      <textarea rows="3" data-photo-text="${i}">${esc(raw)}</textarea>
+    </div>`;
+  }).join('');
+  $('cusPhotoPreview').hidden = false;
+  $('cusPhotoPreview').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function recognizePhoto(file) {
+  const button = $('cusPhoto'), status = $('cusPhotoStatus');
+  button.disabled = true; status.textContent = '正在压缩图片…';
+  const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 60000);
+  try {
+    const image = await imageForAI(file);
+    status.textContent = 'AI 正在识字和分段…';
+    const res = await fetch('api/materials/from-image', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image }), signal: ctl.signal
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+    if (!Array.isArray(data.materials) || !data.materials.length) throw new Error('没有识别到可用素材');
+    renderPhotoMaterials(data.materials);
+    status.textContent = `识别到 ${data.materials.length} 条，请校对`;
+  } catch (e) {
+    status.textContent = '';
+    toast(e.name === 'AbortError' ? '图片识别超时了，请重试' : e.message, 'bad');
+  } finally {
+    clearTimeout(timer); button.disabled = false;
+  }
+}
+
+function savePhotoMaterials() {
+  const picks = [...$('cusPhotoList').querySelectorAll('[data-photo-pick]:checked')];
+  if (!picks.length) return toast('至少勾选一条素材', 'bad');
+  const materials = [];
+  try {
+    picks.forEach((pick, i) => materials.push(makeCustom($('cusPhotoList').querySelector(`[data-photo-text="${pick.dataset.photoPick}"]`).value)));
+  } catch (e) { return toast(`第 ${materials.length + 1} 条：${e.message}`, 'bad'); }
+  storeCustoms(materials);
+  $('cusPhotoPreview').hidden = true;
+  $('cusPhotoList').innerHTML = '';
+  $('cusPhotoStatus').textContent = '';
+  toast(`已把 ${materials.length} 条收进素材库`, 'good');
 }
 
 /* 删除要连带清掉所有档案对它的技能记录，否则残留 id 会在复习/选技时变成孤儿 */
@@ -791,6 +868,13 @@ async function boot() {
 
   $('homeCustom').onclick = () => openCustom(null);
   $('cusSave').onclick = addCustom;
+  $('cusPhoto').onclick = () => $('cusPhotoFile').click();
+  $('cusPhotoFile').onchange = e => {
+    const file = e.target.files[0];
+    e.target.value = '';              // 同一张图再选一次也能触发 onchange
+    if (file) recognizePhoto(file);
+  };
+  $('cusPhotoSave').onclick = savePhotoMaterials;
 
   $('createProfile').onclick = () => {
     const name = $('newName').value.trim();
