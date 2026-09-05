@@ -1,15 +1,17 @@
 /* 档案、存储、导航、练功房与背诵验收。
    设计约束（见 docs/adr）：
-   - 所有进度存 localStorage，一台电脑多个档案，无账号。
+   - 游客进度存 localStorage；登录后进度同步到服务器 SQLite，本机始终留一份镜像。
    - API Key 与档案分开存，导出档案时绝不带上 Key。
-   - 背诵验收是离线的词语级拼接，没网也能走完核心循环。 */
+   - 背诵验收是离线的词语级拼接，没网也能走完核心循环（离线时退游客模式）。 */
 
 const STORE_KEY = 'zwjm.v1';
+const GUEST_BAK = 'zwjm.guest.bak';   // 登录前的游客进度备份：退出登录时找回
 const REVIEW_DAYS = 14;
 const DAILY_GOAL = 3;   // 每天背 3 条算达成日目标，达成才计连胜
 
 let DB = null;          // { profiles: [], lastProfileId, settings }
 let ME = null;          // 当前档案
+let AUTH = null;        // { username } | null：云端登录态；null = 游客，数据只在本机
 
 /* ---------------- 存储 ---------------- */
 function loadDB() {
@@ -20,7 +22,7 @@ function loadDB() {
 }
 function saveDB() {
   try {
-    localStorage.setItem(STORE_KEY, JSON.stringify(DB));
+    localStorage.setItem(STORE_KEY, JSON.stringify(DB));   // 游客模式的主存，登录用户的本地镜像
   } catch (e) {
     /* 隐私模式禁存储 / 配额满：不让保存失败炸掉整个操作，提醒一次就够，别每次保存都弹 */
     if (!storageWarned) {
@@ -28,6 +30,7 @@ function saveDB() {
       toast('这台浏览器现在存不了进度（可能是隐私模式），关页面前记得导出备份。', 'bad');
     }
   }
+  if (AUTH) pushCloud();   // 登录了就同步到服务器（防抖合并）
 }
 let storageWarned = false;
 
@@ -173,6 +176,144 @@ function renderProfiles() {
       el.onclick = () => enter(el.dataset.pf));
   }
   view('profile');
+  renderAuth();   // 档案页总是带一块云同步卡片：注册/登录/退出
+}
+
+/* ---------------- 云同步：登录后进度存服务器 SQLite，游客照旧存本机 ---------------- */
+
+let cloudWarned = false;
+let pushTimer = null;
+
+/* 启动时拉云端：401 = 没登录（游客），网络失败 = 离线（本地双击打开也没有），都不影响玩 */
+async function pullCloud() {
+  try {
+    const r = await fetch('api/state', { cache: 'no-store' });
+    if (r.status === 401) return;
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    AUTH = { username: d.username };
+    if (d.data && typeof d.data === 'object') {
+      DB = d.data;
+      if (!Array.isArray(DB.profiles)) DB.profiles = [];
+      if (!Array.isArray(DB.customMaterials)) DB.customMaterials = [];
+      try { localStorage.setItem(STORE_KEY, JSON.stringify(DB)); } catch (e) {}   // 本地镜像
+    }
+  } catch (e) { /* 没服务器：游客模式照常 */ }
+}
+
+/* 背诵/打怪会连着触发好几次保存，防抖 600ms 合并成一次上传 */
+function pushCloud() {
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(flushCloud, 600);
+}
+async function flushCloud() {
+  if (!AUTH) return;
+  try {
+    const r = await fetch('api/state', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data: DB })
+    });
+    if (r.status === 401) {   // 令牌过期：退回游客，本地镜像还在，不丢
+      AUTH = null;
+      renderAuth();
+      toast('登录过期了，进度先存在本机；重新登录可继续同步', 'bad');
+      return;
+    }
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+  } catch (e) {
+    if (!cloudWarned) {
+      cloudWarned = true;
+      toast('云端保存失败，进度先存在本机；联网后再操作一下会自动同步', 'bad');
+    }
+  }
+}
+
+/* 档案页上的云同步卡片：注册 / 登录 / 退出 */
+function renderAuth() {
+  const box = $('authCard');
+  if (!box) return;
+  if (AUTH) {
+    box.innerHTML = `
+      <div class="row" style="justify-content:space-between">
+        <b>☁️ ${esc(AUTH.username)}</b>
+        <button class="btn ghost small" id="authLogout">退出登录</button>
+      </div>
+      <p class="muted">已登录，进度存在服务器上，换台电脑登录还是这份。退出后回到本机进度。</p>`;
+    $('authLogout').onclick = doLogout;
+    return;
+  }
+  box.innerHTML = `
+    <b>云同步账号</b>
+    <p class="muted">只要账号和密码，没有别的步骤。注册后进度存在服务器，换电脑、换浏览器也不丢；
+      不注册也能玩，进度只存在这台电脑。</p>
+    <div class="auth-row">
+      <input type="text" id="authName" maxlength="32" placeholder="账号" autocomplete="username">
+      <input type="password" id="authPass" maxlength="72" placeholder="密码" autocomplete="current-password">
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button class="btn small" id="authReg">注册</button>
+      <button class="btn ghost small" id="authLogin">已有账号，登录</button>
+    </div>`;
+  $('authReg').onclick = () => doAuth('register');
+  $('authLogin').onclick = () => doAuth('login');
+}
+
+/* 注册 / 登录共用：成功后云端有数据就切到云端，云端是空的就把眼前这份搬上去（老游客不丢档） */
+async function doAuth(kind) {
+  const username = $('authName').value.trim();
+  const password = $('authPass').value;
+  if (!username || !password) return toast('账号和密码都填一下', 'bad');
+  try {
+    const r = await fetch('api/auth/' + kind, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) return toast(d.error || '操作没成功', 'bad');
+    const wasGuest = DB.profiles.length > 0;
+    if (wasGuest) {   // 游客进度先备份好，退出登录可找回
+      try { localStorage.setItem(GUEST_BAK, JSON.stringify(DB)); } catch (e) {}
+    }
+    AUTH = { username };
+    const sr = await fetch('api/state', { cache: 'no-store' });
+    const sd = await sr.json().catch(() => ({}));
+    if (sd.data && sd.data.profiles && sd.data.profiles.length) {
+      if (wasGuest && !confirm('本地有一份游客进度，登录后会切换到云端账号里的进度（游客进度已备份，退出登录可找回）。')) {
+        await fetch('api/auth/logout', { method: 'POST' });
+        AUTH = null;
+        toast('已取消，继续用本机的游客进度');
+        return;
+      }
+      DB = sd.data;
+      if (!Array.isArray(DB.profiles)) DB.profiles = [];
+      if (!Array.isArray(DB.customMaterials)) DB.customMaterials = [];
+      try { localStorage.setItem(STORE_KEY, JSON.stringify(DB)); } catch (e) {}
+    } else {
+      await flushCloud();   // 云端是空的（刚注册/还没玩过）：把眼前这份当初始数据传上去
+    }
+    ME = null;
+    loadCustom();
+    $('authPass').value = '';
+    renderProfiles();
+    toast(kind === 'register' ? '注册成功，进度已经存到云端' : `欢迎回来，${username}`, 'good');
+  } catch (e) {
+    toast('连不上服务器（本地直接打开的文件没有云端）', 'bad');
+  }
+}
+
+async function doLogout() {
+  try { await fetch('api/auth/logout', { method: 'POST' }); } catch (e) {}
+  AUTH = null;
+  try {   // 有游客备份就恢复，没有就当新浏览器用
+    const bak = localStorage.getItem(GUEST_BAK);
+    if (bak) { localStorage.setItem(STORE_KEY, bak); localStorage.removeItem(GUEST_BAK); }
+  } catch (e) {}
+  ME = null; DB = null;
+  loadDB(); loadCustom();
+  renderProfiles();
+  toast('已退出，回到这台电脑的进度', 'good');
 }
 
 function enter(id) {
@@ -623,7 +764,7 @@ function download(name, text) {
 }
 
 /* ---------------- 启动 ---------------- */
-function boot() {
+async function boot() {
   /* 全局错误兜底：真出问题时给家长一句人话，而不是白屏装死。
      同一句话 5 秒内不刷屏（渲染类错误常常连发）；原始错误仍进控制台方便排查。 */
   let lastErrMsg = '', lastErrAt = 0;
@@ -643,6 +784,7 @@ function boot() {
   });
 
   loadDB();
+  await pullCloud();   // 有登录态就拉云端进度（401/离线都退回游客）
   loadCustom();        // 手工素材注进 CORPUS，必须发生在任何渲染之前
   bindSettings();
   bindBattle();          // battle.js

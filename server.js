@@ -10,6 +10,7 @@
  *   ZWJM_KEY      模型 API Key（必填，不要写进任何仓库文件）
  *   ZWJM_BASE     OpenAI 兼容端点，默认 token-plan
  *   ZWJM_MODEL    模型名，默认 qwen3.8-flash
+ *   ZWJM_DB       可选。SQLite 数据文件路径，默认 data/zuowen.db（相对本文件）
  *   PORT          监听端口，默认 8080
  *   ZWJM_PREFIX   可选。设为 /zw 时，本应用挂在 /zw 下，
  *                 其余路径全部反向代理给 ZWJM_UPSTREAM（用来与别的站共享 80 端口）
@@ -123,6 +124,132 @@ function readBody(req, limit = 8192) {
   });
 }
 
+/* ---------- 账号与云存档：SQLite（Node 内置 node:sqlite，仍零依赖） ----------
+   三张表：users（账号+密码哈希）/ sessions（登录令牌）/ states（每个账号一整份进度 JSON）。
+   注册只要账号和密码，不设门禁：没有验证码、没有邮箱、不限密码强度。
+   密码绝不存明文（scrypt+随机盐），登录态用 HttpOnly Cookie + 数据库令牌。 */
+const { DatabaseSync } = require('node:sqlite');
+const crypto = require('crypto');
+const DB_PATH = path.resolve(ROOT, process.env.ZWJM_DB || 'data/zuowen.db');
+fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });   // data/ 不进 git（见 .gitignore）
+const sq = new DatabaseSync(DB_PATH);
+sq.exec(`
+  CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL UNIQUE,
+    pass_hash TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS sessions (
+    token TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS states (
+    user_id INTEGER PRIMARY KEY,
+    data TEXT NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+`);
+const Q = {
+  insUser:      sq.prepare('INSERT INTO users (username, pass_hash, created_at) VALUES (?, ?, ?)'),
+  getUser:      sq.prepare('SELECT * FROM users WHERE username = ?'),
+  insSession:   sq.prepare('INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)'),
+  delSession:   sq.prepare('DELETE FROM sessions WHERE token = ?'),
+  sweepSession: sq.prepare('DELETE FROM sessions WHERE expires_at < ?'),
+  getAuth:      sq.prepare('SELECT u.id AS uid, u.username AS username FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token = ? AND s.expires_at > ?'),
+  getState:     sq.prepare('SELECT data FROM states WHERE user_id = ?'),
+  putState:     sq.prepare('INSERT INTO states (user_id, data, updated_at) VALUES (?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at')
+};
+
+/* Node v22.13 的 node:sqlite 有 GC bug：模块作用域的 const 引用保不住连接与语句，
+   启动后约半秒就被错误 finalize（稳定复现 statement has been finalized）。
+   必须 global 强引用保活，别改成局部变量或删掉。 */
+global.zwjmSqlite = { sq, Q };
+
+function hashPassword(pw) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  return salt + ':' + crypto.scryptSync(pw, salt, 32).toString('hex');
+}
+function verifyPassword(pw, stored) {
+  const i = String(stored).indexOf(':');
+  if (i < 1) return false;
+  try {
+    return crypto.timingSafeEqual(crypto.scryptSync(pw, stored.slice(0, i), 32), Buffer.from(stored.slice(i + 1), 'hex'));
+  } catch (e) { return false; }   // 存量哈希格式不对：一律当密码错误
+}
+
+const SESSION_DAYS = 30;
+function getTok(req) {
+  const m = String(req.headers.cookie || '').match(/(?:^|;\s*)zwjm_tok=([a-f0-9]{64})/);
+  return m ? m[1] : null;
+}
+function setTok(res, tok, days) {
+  res.setHeader('Set-Cookie', `zwjm_tok=${tok}; Path=${PREFIX || '/'}; Max-Age=${days * 86400}; HttpOnly; SameSite=Lax`);
+}
+function authUser(req) {
+  const tok = getTok(req);
+  if (!tok) return null;
+  Q.sweepSession.run(Date.now());   // 顺手清掉过期令牌，表很小不心疼
+  return Q.getAuth.get(tok, Date.now()) || null;
+}
+
+async function handleAuth(req, res, ip, kind) {
+  const limit = rateLimited(ip);
+  if (limit) return sendJson(res, 429, { error: limit });
+  let body;
+  try { body = JSON.parse(await readBody(req)); }
+  catch (e) { return sendJson(res, 400, { error: '请求格式不对' }); }
+  const username = String(body.username || '').trim();
+  const password = String(body.password || '');
+  if (!username || username.length > 32) return sendJson(res, 400, { error: '账号要填 1-32 个字' });
+  if (!password || Buffer.byteLength(password) > 72) return sendJson(res, 400, { error: '密码要填上，别超过 72 个字节' });
+
+  if (kind === 'register') {
+    try {
+      Q.insUser.run(username, hashPassword(password), Date.now());
+    } catch (e) {
+      if (String(e.message || '').includes('UNIQUE')) return sendJson(res, 409, { error: '这个名字已经被用了，换个名字或直接登录' });
+      throw e;
+    }
+  }
+  const u = Q.getUser.get(username);
+  if (!u || !verifyPassword(password, u.pass_hash)) return sendJson(res, 401, { error: '账号或密码不对' });
+
+  const tok = crypto.randomBytes(32).toString('hex');
+  Q.insSession.run(tok, u.id, Date.now() + SESSION_DAYS * 86400000);
+  setTok(res, tok, SESSION_DAYS);
+  sendJson(res, 200, { ok: true, username });
+}
+
+function handleLogout(req, res) {
+  const tok = getTok(req);
+  if (tok) Q.delSession.run(tok);
+  setTok(res, '', 0);   // Max-Age=0，浏览器立刻丢掉令牌
+  sendJson(res, 200, { ok: true });
+}
+
+function handleStateGet(req, res) {
+  const me = authUser(req);
+  if (!me) return sendJson(res, 401, { error: '未登录' });
+  const row = Q.getState.get(me.uid);
+  sendJson(res, 200, { username: me.username, data: row ? JSON.parse(row.data) : null });
+}
+
+async function handleStatePut(req, res) {
+  const me = authUser(req);
+  if (!me) return sendJson(res, 401, { error: '未登录' });
+  let body;
+  try { body = JSON.parse(await readBody(req, 262144)); }   // 整份进度 JSON：给 256KB 上限，防塞爆
+  catch (e) { return sendJson(res, 400, { error: '请求格式不对' }); }
+  const data = body && body.data;
+  if (!data || typeof data !== 'object' || !Array.isArray(data.profiles)) {
+    return sendJson(res, 400, { error: '进度数据结构不对' });
+  }
+  Q.putState.run(me.uid, JSON.stringify(data), Date.now());
+  sendJson(res, 200, { ok: true });
+}
+
 async function handleReview(req, res, ip) {
   const limit = rateLimited(ip);
   if (limit) return sendJson(res, 429, { error: limit });
@@ -202,8 +329,13 @@ http.createServer(async (req, res) => {
     }
 
     if (req.url.startsWith('/api/health')) {
-      return sendJson(res, 200, { ok: true, ai: !!KEY, model: MODEL, corpus: CORPUS.length, quests: QUESTS.length });
+      return sendJson(res, 200, { ok: true, ai: !!KEY, model: MODEL, corpus: CORPUS.length, quests: QUESTS.length, db: true });
     }
+    if (req.url.startsWith('/api/auth/register') && req.method === 'POST') return handleAuth(req, res, ip, 'register');
+    if (req.url.startsWith('/api/auth/login') && req.method === 'POST') return handleAuth(req, res, ip, 'login');
+    if (req.url.startsWith('/api/auth/logout') && req.method === 'POST') return handleLogout(req, res);
+    if (req.url.startsWith('/api/state') && req.method === 'GET') return handleStateGet(req, res);
+    if (req.url.startsWith('/api/state') && req.method === 'PUT') return handleStatePut(req, res);
     if (req.url.startsWith('/api/review')) {
       if (req.method !== 'POST') return sendJson(res, 405, { error: '只接受 POST' });
       if (!KEY) return sendJson(res, 503, { error: '服务端没有配置模型 Key，只有规则点评' });

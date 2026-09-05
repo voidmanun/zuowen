@@ -228,6 +228,7 @@ input[type="text"], input[type="password"], select, textarea {
   resize: vertical;
 }
 label { display: block; font-weight: 700; margin: 14px 0 4px; font-size: .92rem; }
+.auth-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .check-row { display: flex; gap: 10px; align-items: flex-start; margin: 10px 0; }
 .check-row input { width: auto; margin-top: 6px; }
 .log { font-family: ui-monospace, monospace; font-size: .82rem; white-space: pre-wrap; background: #fffdf6; border: 1px dashed var(--line); border-radius: 8px; padding: 10px; max-height: 220px; overflow: auto; }
@@ -243,6 +244,7 @@ label { display: block; font-weight: 700; margin: 14px 0 4px; font-size: .92rem;
   .topbar .who { font-size: .75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 5.5em; }
   .topbar .btn.small { padding: 4px 9px; font-size: .76rem; }
   .grid { grid-template-columns: 1fr 1fr; }
+  .auth-row { grid-template-columns: 1fr; }
   .stat b { font-size: 1.3rem; }
   .monster-box .face { font-size: 2.2rem; }
   .skill-pick { max-height: 40vh; }
