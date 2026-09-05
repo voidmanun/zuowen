@@ -117,11 +117,11 @@
       </select>
       <label>从图片识别</label>
       <div class="row">
-        <button class="btn ghost" id="cusPhoto">📷 拍照或选图</button>
+        <button class="btn ghost" id="cusPhoto">🖼️ 上传图片（最多 5 张）</button>
         <span class="muted" id="cusPhotoStatus"></span>
       </div>
-      <input type="file" id="cusPhotoFile" accept="image/jpeg,image/png,image/webp" capture="environment" hidden>
-      <p class="muted" style="margin-top:8px">图片会发给 AI 识字，识别后即丢弃，不会保存。识别结果需要你确认才会进素材库。</p>
+      <input type="file" id="cusPhotoFile" accept="image/jpeg,image/png,image/webp" multiple hidden>
+      <p class="muted" style="margin-top:8px">可一次选择多张图片。图片会发给 AI 识字，识别后即丢弃，不会保存。识别结果需要你确认才会进素材库。</p>
       <label for="cusText">素材文本</label>
       <textarea id="cusText" rows="3" maxlength="150"
         placeholder="照着抄一句好句子。想自己断词就用 | 隔开，比如：他个子不高，| 排队总在第二个，| 可跑起来谁也追不上。"></textarea>

@@ -612,27 +612,35 @@ function renderPhotoMaterials(materials) {
   $('cusPhotoPreview').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-async function recognizePhoto(file) {
+async function recognizePhotos(files) {
   const button = $('cusPhoto'), status = $('cusPhotoStatus');
-  button.disabled = true; status.textContent = '正在压缩图片…';
-  const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 60000);
+  if (files.length > 5) return toast('一次最多上传 5 张图片', 'bad');
+  button.disabled = true;
+  const materials = [];
+  let failed = 0;
   try {
-    const image = await imageForAI(file);
-    status.textContent = 'AI 正在识字和分段…';
-    const res = await fetch('api/materials/from-image', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image }), signal: ctl.signal
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
-    if (!Array.isArray(data.materials) || !data.materials.length) throw new Error('没有识别到可用素材');
-    renderPhotoMaterials(data.materials);
-    status.textContent = `识别到 ${data.materials.length} 条，请校对`;
-  } catch (e) {
-    status.textContent = '';
-    toast(e.name === 'AbortError' ? '图片识别超时了，请重试' : e.message, 'bad');
+    for (let i = 0; i < files.length; i++) {
+      const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 60000);
+      try {
+        status.textContent = `正在识别第 ${i + 1}/${files.length} 张…`;
+        const image = await imageForAI(files[i]);
+        const res = await fetch('api/materials/from-image', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image }), signal: ctl.signal
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+        if (!Array.isArray(data.materials) || !data.materials.length) throw new Error('没有识别到可用素材');
+        materials.push(...data.materials);
+      } catch (_) { failed++; }
+      finally { clearTimeout(timer); }
+    }
+    const unique = [...new Map(materials.map(m => [m.text, m])).values()];
+    if (unique.length) renderPhotoMaterials(unique);
+    status.textContent = unique.length ? `识别到 ${unique.length} 条，请校对${failed ? `（${failed} 张失败）` : ''}` : '';
+    if (failed) toast(failed === files.length ? '图片都没能识别，请重试' : `${failed} 张图片识别失败，其他结果已保留`, 'bad');
   } finally {
-    clearTimeout(timer); button.disabled = false;
+    button.disabled = false;
   }
 }
 
@@ -870,9 +878,9 @@ async function boot() {
   $('cusSave').onclick = addCustom;
   $('cusPhoto').onclick = () => $('cusPhotoFile').click();
   $('cusPhotoFile').onchange = e => {
-    const file = e.target.files[0];
+    const files = [...e.target.files];
     e.target.value = '';              // 同一张图再选一次也能触发 onchange
-    if (file) recognizePhoto(file);
+    if (files.length) recognizePhotos(files);
   };
   $('cusPhotoSave').onclick = savePhotoMaterials;
 
